@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Part 1</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+
+    button {
+      margin-bottom: 12px;
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+
+    .tooltip {
+      position: absolute;
+      visibility: hidden;
+      background: white;
+      border: 1px solid #aaa;
+      padding: 8px;
+      border-radius: 4px;
+      pointer-events: none;
+      font-size: 13px;
+    }
+
+    .cell {
+      stroke: white;
+      stroke-width: 1px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Hong Kong Monthly Temperature Matrix</h2>
+
+    <button id="toggle">Show Minimum Temperature</button>
+    <div id="chart"></div>
+    <div class="tooltip" id="tooltip"></div>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="script1.js"></script>
+</body>
+</html>
