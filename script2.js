@@ -38,9 +38,14 @@ const data = await d3.csv("temperature_daily.csv", (d) => {
 
 // one record for each year + month combination
 // for each record, store the highest daily max temperature and lowest daily min temperature
+
+// note that the data is actually limited to the past 10 years now
+const latest_year = d3.max(data, d => d.date.getFullYear());
+const recent_data = data.filter(d => d.date.getFullYear() >= latest_year - 9);
+
 const monthly = [];
 
-data.forEach(d => {
+recent_data.forEach(d => {
     const year = d.date.getFullYear();
     const month = d.date.getMonth();
 
@@ -92,11 +97,23 @@ svg.append("g")
 svg.append("g")
     .call(d3.axisLeft(y).tickFormat(d => months[d]));
 
-// 5. color + tooltip
+// 5. color + tooltip + setup of mini chart lines
 // ---------------------------------------------------
 
 const color = d3.scaleSequential()
+    .domain([
+        d3.min(monthly, d => d.max),
+        d3.max(monthly, d => d.max)
+    ])
     .interpolator(d3.interpolateOranges);
+
+// shared temperature range for the mini chart lines
+const min_temp = d3.min(recent_data, d => d.min);
+const max_temp = d3.max(recent_data, d => d.max);
+
+// different colors for the mini chart lines
+const max_color = "green";
+const min_color = "cyan";
 
 // the tooltip is the small popup that appears whenever hovering over a cell
 const tooltip = d3.select("#tooltip");
@@ -108,15 +125,22 @@ const mouse_over = function(event, d) {
 };
 
 // display year-month, maxT, minT
+// it seems like part 2 implements it so that the tooltip can distinguish each day on the mini chart line
+// i was unsuccessful in implementing it like that; i reverted to the part 1 standard tooltip that displays month-wide info
 const mouse_move = function(event, d) {
-    tooltip
-        .style("left", (event.pageX + 10) + "px")
-        .style("top", (event.pageY + 10) + "px")
-        .html(`
-            Date: ${d.year}-${d.month + 1};
-            max: ${d.max.toFixed(1)} °C;
-            min: ${d.min.toFixed(1)} °C
-        `);
+    // format of containing data changed, so now retrieval of the specific record is needed first
+    const record = monthly.find(m => m.year === d.year && m.month === d.month);
+    if (record){
+        tooltip
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY + 10) + "px")
+            .html(`
+                Date: ${d.year}-${d.month + 1};
+                max: ${record.max.toFixed(1)} °C;
+                min: ${record.min.toFixed(1)} °C
+            `);
+    }
+    
 };
 
 // hide tooltip when mouse exits cell
@@ -127,29 +151,90 @@ const mouse_leave = function() {
 // 6. create matrix cells
 // ---------------------------------------------------
 
-// bind each monthly record to a cell/rects
+// each cell = a year + month combination
+// the cell contains the background rectangle (part 1) and the mini chart lines
+const cell_data = years.flatMap(year =>
+    d3.range(12).map(month => ({
+        year: year,
+        month: month,
+        // days can be filtered by only selected records in that year + month combination
+        days: recent_data.filter(d =>
+            d.date.getFullYear() === year && d.date.getMonth() === month
+        )
+    }))
+);
+
 const cells = svg.selectAll(".cell")
-    .data(monthly)
-    .join("rect")
+    .data(cell_data)
+    .join("g")
     .attr("class", "cell")
-    .attr("x", d => x(d.year))
-    .attr("y", d => y(d.month))
-    .attr("width", x.bandwidth())
-    .attr("height", y.bandwidth())
-    .attr("stroke", "white")
+    .attr("transform", d => `translate(${x(d.year)},${y(d.month)})`)
     .on("mouseover", mouse_over)
     .on("mousemove", mouse_move)
     .on("mouseout", mouse_leave);
 
+// dimensions of each mini chart per cell
+const cell_width = x.bandwidth();
+const cell_height = y.bandwidth();
+const inner_width = cell_width - 5;
+const inner_height = cell_height - 5;
 
-// 7. legend setup
+// 7. draw the background cells/rect
+// ---------------------------------------------------
+cells.append("rect")
+    .attr("width", cell_width)
+    .attr("height", cell_height)
+    .attr("fill", d => {
+        const record = monthly.find(m => m.year === d.year && m.month === d.month);
+        return record ? color(record.max) : "black";
+    })
+    .attr("stroke", "white")
+    .attr("stroke-width", 1);
+
+// x direction represents the day
+const day_scale = d3.scaleLinear()
+    .domain([1,31])
+    .range([0, inner_width]);
+
+const temp_scale = d3.scaleLinear()
+    .domain([min_temp, max_temp])
+    .range([inner_height, 0]);
+
+cells.each(function(cell) {
+    const group = d3.select(this);
+    const chart = group.append("g")
+        .attr("transform", "translate(2,2)");
+    
+    // the daily max temp line
+    chart.append("path")
+        .datum(cell.days)
+        .attr("fill", "none")
+        .attr("stroke", max_color)
+        .attr("stroke-width", 1)
+        .attr("d", d3.line()
+            .defined(d => Number.isFinite(d.max))
+            .x(d => day_scale(d.date.getDate()))
+            .y(d => temp_scale(d.max))
+        );
+    
+    // the daily min temp line
+    chart.append("path")
+        .datum(cell.days)
+        .attr("fill", "none")
+        .attr("stroke", min_color)
+        .attr("stroke-width", 1)
+        .attr("d", d3.line()
+            .defined(d => Number.isFinite(d.min))
+            .x(d => day_scale(d.date.getDate()))
+            .y(d => temp_scale(d.min))
+        );
+});
+
+
+// 8. legend setup
 // ---------------------------------------------------
 
-
 // the legend as required by the rubric
-// it will only be actually appended later during the update function
-// this is to account for the fact that the chart can be toggled to display min/max temperature
-// the legend must be able to change scale to account for this
 const legend = svg.append("g")
     .attr("transform", `translate(${width + 20},0)`);
 
@@ -167,8 +252,6 @@ d3.range(11).forEach(i => {
         .attr("stop-color", d3.interpolateOranges(i / 10));
 });
 
-
-
 // draw the color bar
 legend.append("rect")
     .attr("width", 15)
@@ -179,51 +262,18 @@ legend.append("rect")
 const legend_axis = legend.append("g")
     .attr("transform", "translate(15, 0)");
 
+const legend_scale = d3.scaleLinear()
+    .domain([d3.min(monthly, d => d.max), d3.max(monthly, d => d.max)])
+    .range([height, 0]);
+
+legend_axis.call(d3.axisRight(legend_scale).ticks(6));
+
 // legend title
 legend.append("text")
-    .attr("transform", "rotate(-90)")
-    .attr("x", -height / 2)
-    .attr("y", -45)
-    .attr("text-anchor", "middle")
+    .attr("transform", `rotate(-90, ${15 + 60}, ${height / 2})`)
+    .attr("x", 15 + 30)
+    .attr("y", height / 2)
+    .attr("text-anchor", "start")
     .text("Temperature (°C)");
 
-// 8. update function (for toggle)
-// ---------------------------------------------------    
-
-// this function recalculates the color mapping and updates the legend for the selected temperature (min/max)
-function update() {
-    const values = monthly.map(d => d[type]);
-
-    const min_temp = d3.min(values);
-    const max_temp = d3.max(values);
-
-    // map temperature to orange shades
-    color.domain([min_temp, max_temp]);
-
-    // update cell colors
-    cells.attr("fill", d => color(d[type]));
-
-    // update legend labels
-    const legend_scale = d3.scaleLinear()
-        .domain([min_temp, max_temp])
-        .range([height, 0]);
-
-    legend_axis.call(
-        d3.axisRight(legend_scale).ticks(6)
-    );
-
-    // update button label
-    d3.select("#toggle").text(
-        type === "max" ? "Show Minimum Temperature" : "Show Maximum Temperature"
-    );
-}
-
-// switch between maximum and minimum
-d3.select("#toggle").on("click", () => {
-    type = type === "max" ? "min" : "max";
-    update();
-});
-
-// draw the initial view
-update();
 })();
