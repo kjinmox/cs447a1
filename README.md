@@ -1,5 +1,7 @@
 OVERVIEW
 Part 1's relevant files: part1.html, script1.js, temperature_daily.csv
+
+
 Part 2's relevant files: part2.html, script2.js, temperature_daily.csv
 
 NOTES
